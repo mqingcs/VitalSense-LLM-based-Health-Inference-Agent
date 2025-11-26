@@ -1,0 +1,9 @@
+{
+  "name": "User",
+  "traits": [],
+  "conditions": [],
+  "habits": [],
+  "preferences": {
+    "mute_alerts": true
+  }
+}

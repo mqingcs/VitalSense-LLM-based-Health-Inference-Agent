@@ -5,6 +5,8 @@ import { OrbitControls, Sphere, MeshDistortMaterial } from "@react-three/drei";
 import { useEffect, useState } from "react";
 import { socket } from "@/lib/socket";
 
+import GlassPanel from "./ui/GlassPanel";
+
 export default function DigitalTwin() {
     const [riskLevel, setRiskLevel] = useState<"LOW" | "MEDIUM" | "HIGH">("LOW");
 
@@ -27,7 +29,7 @@ export default function DigitalTwin() {
     };
 
     return (
-        <div className="h-full w-full relative bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden">
+        <GlassPanel className="h-full w-full relative overflow-hidden" intensity="medium">
             <div className="absolute top-4 left-4 z-10">
                 <h2 className="text-zinc-400 font-mono text-xs uppercase tracking-widest">Digital Twin Status</h2>
                 <div className="text-2xl font-bold font-mono" style={{ color: getColor() }}>
@@ -52,6 +54,6 @@ export default function DigitalTwin() {
                     />
                 </Sphere>
             </Canvas>
-        </div>
+        </GlassPanel>
     );
 }

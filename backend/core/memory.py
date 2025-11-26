@@ -36,16 +36,21 @@ class Hippocampus:
                 return
 
             # 4. Store
-            # ChromaDB metadata cannot hold lists. We must serialize them.
+            # ChromaDB metadata cannot hold lists or None. We must serialize/filter them.
             metadata = json.loads(entry.model_dump_json())
+            clean_metadata = {}
             for key, value in metadata.items():
+                if value is None:
+                    continue # Skip None values (ChromaDB doesn't support them)
                 if isinstance(value, list):
-                    metadata[key] = json.dumps(value)
+                    clean_metadata[key] = json.dumps(value)
+                else:
+                    clean_metadata[key] = value
             
             self.collection.add(
                 documents=[index_text],
                 embeddings=[embedding],
-                metadatas=[metadata], 
+                metadatas=[clean_metadata], 
                 ids=[str(uuid.uuid4())]
             )
             print(f"[Hippocampus] Memory Stored: {entry.statement}")
@@ -90,6 +95,58 @@ class Hippocampus:
             print(f"[Hippocampus] Error recalling memory: {e}")
             return []
 
+            return memories
+        except Exception as e:
+            print(f"[Hippocampus] Error fetching all memories: {e}")
+            return []
+
+    async def delete_memory(self, memory_id: str):
+        """
+        Deletes a specific memory by ID.
+        """
+        try:
+            self.collection.delete(ids=[memory_id])
+            print(f"[Hippocampus] Deleted memory: {memory_id}")
+            return True
+        except Exception as e:
+            print(f"[Hippocampus] Error deleting memory {memory_id}: {e}")
+            return False
+
+    async def clear_all(self):
+        """
+        Deletes ALL memories.
+        """
+        try:
+            # ChromaDB doesn't have a truncate, so we get all IDs and delete
+            all_ids = self.collection.get()['ids']
+            if all_ids:
+                self.collection.delete(ids=all_ids)
+            print(f"[Hippocampus] Cleared all memories.")
+            return True
+        except Exception as e:
+            print(f"[Hippocampus] Error clearing all memories: {e}")
+            return False
+
+    async def delete_range(self, start_iso: str, end_iso: str):
+        """
+        Deletes memories within a time range.
+        """
+        try:
+            # Use metadata filtering
+            self.collection.delete(
+                where={
+                    "$and": [
+                        {"timestamp": {"$gte": start_iso}},
+                        {"timestamp": {"$lte": end_iso}}
+                    ]
+                }
+            )
+            print(f"[Hippocampus] Deleted memories between {start_iso} and {end_iso}")
+            return True
+        except Exception as e:
+            print(f"[Hippocampus] Error deleting range: {e}")
+            return False
+
     async def get_all_memories(self) -> List[MemoryEntry]:
         """
         Retrieves ALL memories for the 3D Graph.
@@ -98,8 +155,10 @@ class Hippocampus:
             results = self.collection.get()
             memories = []
             
+            print(f"[Hippocampus] Raw results count: {len(results['ids']) if results['ids'] else 0}")
+            
             if results['metadatas']:
-                for meta in results['metadatas']:
+                for i, meta in enumerate(results['metadatas']):
                     # Deserialize lists
                     for key, value in meta.items():
                         if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
@@ -107,12 +166,35 @@ class Hippocampus:
                                 meta[key] = json.loads(value)
                             except json.JSONDecodeError:
                                 pass
-                    memories.append(MemoryEntry(**meta))
-            
+                    
+                    # Inject ID
+                    try:
+                        entry = MemoryEntry(**meta)
+                        entry.id = results['ids'][i]
+                        memories.append(entry)
+                    except Exception as e:
+                         print(f"[Hippocampus] Failed to parse memory {results['ids'][i]}: {e}")
+
+            print(f"[Hippocampus] Returning {len(memories)} valid memories.")
             return memories
         except Exception as e:
             print(f"[Hippocampus] Error fetching all memories: {e}")
             return []
+
+    async def get_debug_stats(self):
+        """
+        Returns raw stats from ChromaDB.
+        """
+        try:
+            count = self.collection.count()
+            peek = self.collection.peek(limit=1)
+            return {
+                "count": count,
+                "peek_ids": peek['ids'],
+                "peek_metadatas": peek['metadatas']
+            }
+        except Exception as e:
+            return {"error": str(e)}
 
 # Global Instance
 hippocampus = Hippocampus()

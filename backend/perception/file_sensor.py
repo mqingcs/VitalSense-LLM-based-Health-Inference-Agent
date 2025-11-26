@@ -23,6 +23,10 @@ class FileSensor(BaseSensor):
             with open(INPUT_FILE, "w") as f:
                 json.dump({"text": "Initial state", "type": "system"}, f)
         
+        # Initialize mtime to current file time to avoid triggering on startup
+        if os.path.exists(INPUT_FILE):
+            self.last_mtime = os.path.getmtime(INPUT_FILE)
+
         print(f"[{self.name}] Started. Watching {INPUT_FILE}...")
         asyncio.create_task(self._loop())
 

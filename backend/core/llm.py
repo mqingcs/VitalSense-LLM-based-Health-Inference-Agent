@@ -90,5 +90,36 @@ class GeminiProvider:
         
         return await self.generate_structured(prompt, MemoryEntry)
 
+    async def generate_chat(self, messages: list[Any]) -> str:
+        """
+        Generates a chat response.
+        Args:
+            messages: List of LangChain message objects (SystemMessage, HumanMessage, AIMessage).
+        """
+        # Convert LangChain messages to Gemini format
+        gemini_messages = []
+        system_instruction = None
+        
+        for msg in messages:
+            if msg.type == "system":
+                system_instruction = msg.content
+            elif msg.type == "human":
+                gemini_messages.append(types.Content(role="user", parts=[types.Part.from_text(text=msg.content)]))
+            elif msg.type == "ai":
+                gemini_messages.append(types.Content(role="model", parts=[types.Part.from_text(text=msg.content)]))
+                
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=gemini_messages,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction
+                )
+            )
+            return response.text if response.text else ""
+        except Exception as e:
+            print(f"❌ Gemini Chat Error: {e}")
+            return "I'm having trouble connecting to my thought process right now."
+
 # Global Instance
 llm_provider = GeminiProvider()

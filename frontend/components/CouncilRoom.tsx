@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { socket } from "@/lib/socket";
 import { Terminal, Activity, Shield, Stethoscope } from "lucide-react";
 import { cn } from "@/lib/utils"; // Assumes you have a utils file, or I can inline it.
+import GlassPanel from "./ui/GlassPanel";
+import ChatInterface from "./ChatInterface";
 
 // Inline utility for now if lib/utils doesn't exist
 function classNames(...classes: (string | undefined | null | false)[]) {
@@ -55,8 +57,10 @@ export default function CouncilRoom() {
         ]);
     };
 
+    // ... (imports)
+
     return (
-        <div className="flex flex-col h-full bg-black border border-zinc-800 font-mono text-sm p-4 rounded-lg shadow-2xl shadow-emerald-900/20">
+        <GlassPanel className="flex flex-col h-full font-mono text-sm p-4 shadow-2xl shadow-emerald-900/20" intensity="low">
             <div className="flex items-center justify-between mb-4 border-b border-zinc-800 pb-2">
                 <h2 className="text-emerald-500 font-bold flex items-center gap-2">
                     <Terminal size={16} />
@@ -105,6 +109,7 @@ export default function CouncilRoom() {
                     </div>
                 )}
             </div>
-        </div>
+            <ChatInterface />
+        </GlassPanel >
     );
 }

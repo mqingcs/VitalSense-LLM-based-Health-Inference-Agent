@@ -14,6 +14,8 @@ interface TimelineEvent {
     duration: number;
 }
 
+import GlassPanel from "./ui/GlassPanel";
+
 export default function SessionTimeline() {
     const [events, setEvents] = useState<TimelineEvent[]>([]);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -53,9 +55,9 @@ export default function SessionTimeline() {
     }, [events]);
 
     return (
-        <div className="fixed bottom-0 left-0 w-full z-40 p-4 pointer-events-none">
-            <div className="max-w-7xl mx-auto pointer-events-auto">
-                <div className="bg-black/80 backdrop-blur-xl border border-zinc-800 rounded-xl p-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        <div className="w-full z-40 mt-8">
+            <div className="max-w-7xl mx-auto">
+                <GlassPanel className="p-4" intensity="medium">
                     <div className="flex items-center gap-2 mb-3 text-xs text-zinc-500 font-mono uppercase tracking-widest">
                         <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
                         <span className="text-cyan-500 font-bold">Live Session Feed</span>
@@ -121,7 +123,7 @@ export default function SessionTimeline() {
                             </div>
                         ))}
                     </div>
-                </div>
+                </GlassPanel>
             </div>
         </div>
     );

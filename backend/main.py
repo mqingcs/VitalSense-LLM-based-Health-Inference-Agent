@@ -11,6 +11,8 @@ from backend.perception.mock_sensor import MockSensor
 from backend.perception.screen_sensor import ScreenSensorComplete as ScreenSensor
 from backend.perception.file_sensor import FileSensor
 from backend.agents.council import council_graph
+from backend.agents.liaison import liaison_agent, LiaisonState
+from langchain_core.messages import HumanMessage
 
 from backend.core.actuators import NotificationActuator
 from backend.core.memory import hippocampus
@@ -64,15 +66,27 @@ async def lifespan(app: FastAPI):
             await notifier.execute(final_plan)
             await sio.emit('intervention', final_data)
             
+    # 5. Chat Handler
+    @sio.on('chat_message')
+    async def handle_chat(sid, data):
+        print(f"--- [Liaison] User Message: {data['message']} ---")
+        
+        # Run Liaison Agent
+        inputs = {"messages": [HumanMessage(content=data['message'])], "user_profile": ""}
+        result = await liaison_agent.ainvoke(inputs)
+        
+        response = result["messages"][-1].content
+        print(f"--- [Liaison] Reply: {response} ---")
+        
+        await sio.emit('chat_reply', {"message": response}, to=sid)
+            
         # 4. Long-term Memory Storage
         # Construct a full log for the Hippocampus to analyze
         full_log = f"""
         Timestamp: {datetime.now().isoformat()}
-        Input Source: {event.payload['type']}
-        Input Text: {event.payload['text']}
-        Risk Level: {final_plan.risk_level}
-        Summary: {final_plan.summary}
-        Actions: {final_plan.actions}
+        Input Source: chat
+        Input Text: {data['message']}
+        Agent Reply: {response}
         """
         await hippocampus.add_memory(full_log)
         
@@ -123,39 +137,31 @@ async def health_check():
 @app.get("/memories")
 async def get_memories():
     """
-    Returns the full Memory Graph for visualization.
+    Returns all memories.
     """
-    memories = await hippocampus.get_all_memories()
-    
-    # Transform into Graph format (Nodes + Links)
-    nodes = []
-    links = []
-    
-    for m in memories:
-        # Node
-        nodes.append({
-            "id": m.timestamp,
-            "group": 1 if "High" in m.outcome else (2 if "Medium" in m.outcome else 3), # Color by risk (heuristic)
-            "label": m.statement,
-            "details": m.model_dump()
-        })
-    
-    # Generate Links based on shared entities
-    for i in range(len(memories)):
-        for j in range(i + 1, len(memories)):
-            m1 = memories[i]
-            m2 = memories[j]
-            
-            # Find intersection of entities
-            shared = set(m1.entities).intersection(set(m2.entities))
-            if shared:
-                links.append({
-                    "source": m1.timestamp,
-                    "target": m2.timestamp,
-                    "value": len(shared)
-                })
+    return await hippocampus.get_all_memories()
 
-    return {"nodes": nodes, "links": links}
+@app.delete("/memories/all")
+async def clear_all_memories():
+    success = await hippocampus.clear_all()
+    return {"success": success}
+
+@app.delete("/memories/range")
+async def delete_memories_range(start: str, end: str):
+    success = await hippocampus.delete_range(start, end)
+    return {"success": success}
+
+@app.delete("/memories/{memory_id}")
+async def delete_memory(memory_id: str):
+    success = await hippocampus.delete_memory(memory_id)
+    return {"success": success}
+
+@app.get("/memories/debug")
+async def debug_memories():
+    """
+    Returns raw stats from ChromaDB to verify persistence.
+    """
+    return await hippocampus.get_debug_stats()
 
 if __name__ == "__main__":
     # Run socket_app instead of app

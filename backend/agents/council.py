@@ -16,6 +16,7 @@ class CouncilState(Dict):
     doctor_output: RiskAssessment
     coach_output: RiskAssessment
     final_output: CouncilActionPlan
+    environment: Dict[str, Any] # [NEW] Maestro Output
 
 # --- Nodes ---
 async def triage_node(state: CouncilState):
@@ -96,8 +97,8 @@ async def synthesizer_node(state: CouncilState):
     Risk: {coach_res.risk_score if coach_res else 0}
     """
     
-    # --- Deterministic Risk Check ---
-    from backend.core.risk_engine import calculate_deterministic_risk
+    # --- Risk Engine Check (Hybrid: Deterministic + Graph) ---
+    from backend.core.risk_engine import risk_engine
     import re
     
     # Extract duration from input if present (e.g. "Duration: 45 minutes")
@@ -112,7 +113,26 @@ async def synthesizer_node(state: CouncilState):
         if hours_match:
             duration = int(hours_match.group(1)) * 60
             
-    risk_calc = calculate_deterministic_risk(state['input_data'], duration)
+    # 1. Deterministic Check
+    risk_calc = risk_engine.calculate_deterministic_risk(state['input_data'], duration)
+    
+    # 2. GraphRAG Check (Complex Patterns)
+    graph_calc = risk_engine.assess_complex_risks(memories)
+    
+    # Combine Risks
+    final_score = max(risk_calc['score'], graph_calc['graph_score'])
+    final_reasons = risk_calc['reasoning']
+    if graph_calc['graph_reasons']:
+        if final_reasons:
+            final_reasons += "; "
+        final_reasons += "; ".join(graph_calc['graph_reasons'])
+        
+    # Determine Level based on combined score
+    final_level = "LOW"
+    if final_score >= 0.7:
+        final_level = "HIGH"
+    elif final_score >= 0.4:
+        final_level = "MEDIUM"
     
     # We format the prompt itself with the extra variables
     formatted_prompt = SYNTHESIZER_PROMPT.format(
@@ -133,9 +153,9 @@ async def synthesizer_node(state: CouncilState):
         memory_context=memory_context_str,
         doctor_output=f"{doctor_res.assessment} (Risk: {doctor_res.risk_score})" if doctor_res else "None",
         coach_output=f"{coach_res.assessment} (Risk: {coach_res.risk_score})" if coach_res else "None",
-        quant_score=risk_calc['score'],
-        quant_level=risk_calc['level'],
-        quant_reason=risk_calc['reasoning']
+        quant_score=final_score,
+        quant_level=final_level,
+        quant_reason=final_reasons
     )
     
     try:
@@ -144,11 +164,52 @@ async def synthesizer_node(state: CouncilState):
             schema_model=CouncilActionPlan,
             context="" # Context is already in the prompt
         )
+        # Inject Graph Highlights manually since LLM might miss them or they are not part of the text generation
+        result.graph_highlights = graph_calc.get("involved_nodes", [])
+        
     except Exception:
         result = CouncilActionPlan(summary="Error", risk_level="UNKNOWN", actions=[])
         
     # Convert Pydantic to Dict for final output compatibility
     return {"final_output": result.model_dump()}
+
+from backend.agents.maestro import run_maestro
+from backend.core.actuators import BrightnessActuator
+
+# Initialize Actuator
+brightness_ctrl = BrightnessActuator()
+
+async def maestro_node(state: CouncilState):
+    print("--- [Council] Maestro Tuning Environment ---")
+    
+    # Extract context from previous steps
+    # We use the final output if available, or intermediate states
+    risk = "UNKNOWN"
+    if "final_output" in state:
+        risk = state["final_output"]["risk_level"]
+    elif "doctor_output" in state:
+         risk = "HIGH" if state["doctor_output"].risk_score > 0.7 else "LOW"
+         
+    # Emotional tone is buried in input_data usually, let's extract or default
+    # Ideally ScreenSensor passes it explicitly, but it's in the text string.
+    # We'll rely on the LLM to infer it from the input_data in the prompt context if needed,
+    # but here we pass the raw input text as "Activity/Context".
+    
+    env_state = await run_maestro(
+        risk_level=risk,
+        emotional_tone=state["input_data"], # Passing full text as context
+        activity=state["source"]
+    )
+    
+    print(f"--- [Maestro] Setting Vibe: {env_state.hex_color}, Brightness: {env_state.brightness}% ---")
+    
+    # 1. Physical Action
+    # Only adjust if it deviates significantly from standard (e.g. < 70 or > 90) to avoid annoyance
+    if env_state.brightness < 70:
+        await brightness_ctrl.execute(env_state.brightness)
+        
+    # 2. Return for Emission (handled by main.py via event bus or we inject into state)
+    return {"environment": env_state.model_dump()}
 
 # --- Graph Construction ---
 workflow = StateGraph(CouncilState)
@@ -157,6 +218,7 @@ workflow.add_node("triage", triage_node)
 workflow.add_node("doctor", doctor_node)
 workflow.add_node("coach", coach_node)
 workflow.add_node("synthesizer", synthesizer_node)
+workflow.add_node("maestro", maestro_node) # [NEW]
 
 workflow.set_entry_point("triage")
 
@@ -184,6 +246,9 @@ workflow.add_conditional_edges(
 # Both experts go to synthesizer
 workflow.add_edge("doctor", "synthesizer")
 workflow.add_edge("coach", "synthesizer")
-workflow.add_edge("synthesizer", END)
+
+# Synthesizer triggers Maestro (Post-processing)
+workflow.add_edge("synthesizer", "maestro")
+workflow.add_edge("maestro", END)
 
 council_graph = workflow.compile()

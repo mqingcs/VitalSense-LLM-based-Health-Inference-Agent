@@ -24,6 +24,7 @@ class CouncilActionPlan(BaseModel):
     summary: str = Field(description="Executive summary of the user's health state.")
     risk_level: str = Field(description="Overall risk level: LOW, MEDIUM, or HIGH.")
     actions: List[str] = Field(description="Concrete, actionable steps for the user to take.")
+    graph_highlights: List[str] = Field(description="List of Memory IDs that contributed to the risk assessment.", default=[])
 
 class MemoryEntry(BaseModel):
     """
@@ -36,4 +37,5 @@ class MemoryEntry(BaseModel):
     user_state: str = Field(description="Inferred emotional or physical state (e.g., 'Anxious').")
     outcome: str = Field(description="The action taken or advice given.")
     remarks: Optional[str] = Field(description="Meta-analysis or additional notes.")
+    id: Optional[str] = Field(description="Unique ID of the memory record.", default=None)
 
