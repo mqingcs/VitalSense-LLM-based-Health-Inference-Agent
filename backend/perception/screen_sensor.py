@@ -2,6 +2,7 @@ import asyncio
 import pyautogui
 import base64
 import io
+from datetime import datetime
 from PIL import Image
 from backend.core.interfaces import BaseSensor
 from backend.core.events import VitalEventBus
@@ -81,10 +82,46 @@ class ScreenSensor(BaseSensor):
                 print(f"[{self.name}] Error: {e}")
 
 # Reworking the class to be complete assuming updated LLM provider
+# --- Activity State Tracker ---
+class ActivityTracker:
+    def __init__(self):
+        self.current_activity = "Unknown"
+        self.start_time = datetime.now()
+        self.last_mouse_pos = pyautogui.position()
+        self.last_mouse_move_time = datetime.now()
+
+    def update(self, new_activity: str) -> int:
+        """
+        Updates state and returns duration in minutes.
+        Handles Idle detection via mouse movement.
+        """
+        now = datetime.now()
+        
+        # 1. Idle Detection (Mouse check)
+        current_mouse_pos = pyautogui.position()
+        if current_mouse_pos != self.last_mouse_pos:
+            self.last_mouse_pos = current_mouse_pos
+            self.last_mouse_move_time = now
+        
+        idle_duration = (now - self.last_mouse_move_time).total_seconds() / 60
+        if idle_duration > 5: # 5 mins no movement
+            new_activity = "Idle"
+
+        # 2. State Transition
+        if new_activity != self.current_activity:
+            print(f"[ActivityTracker] Switch: {self.current_activity} -> {new_activity}")
+            self.current_activity = new_activity
+            self.start_time = now
+            return 0
+        else:
+            duration = (now - self.start_time).total_seconds() / 60
+            return int(duration)
+
 class ScreenSensorComplete(BaseSensor):
     def __init__(self, event_bus: VitalEventBus, interval: int = 30):
         super().__init__("ScreenObserver", event_bus)
         self.interval = interval
+        self.tracker = ActivityTracker()
 
     async def start(self):
         self.is_running = True
@@ -104,21 +141,57 @@ class ScreenSensorComplete(BaseSensor):
                 screenshot.thumbnail((1024, 1024))
                 
                 # 2. Analyze
-                # We will use a specialized method on the provider (to be added)
                 analysis = await llm_provider.analyze_image(
                     image=screenshot,
                     prompt=VISION_PROMPT,
                     schema_model=ScreenAnalysis
                 )
                 
-                print(f"[{self.name}] Analysis: {analysis.description} (Risk: {analysis.health_risk_detected})")
+                # 3. Track Duration
+                duration = self.tracker.update(analysis.activity_category)
                 
-                # 3. Emit if relevant
-                if analysis.health_risk_detected or analysis.activity_category in ["Work", "Social"]:
+                print(f"[{self.name}] Activity: {analysis.activity_category} ({duration}m). Risk: {analysis.health_risk_detected}")
+                
+                # 4. Emit Logic (Temporal Filter)
+                # Only emit if:
+                # a) High Risk detected AND Duration > Threshold (e.g. 60m for Work, 120m for Leisure)
+                # b) OR it's a critical acute risk (handled by Council, but we pass the data)
+                # c) OR state just changed (Duration == 0)
+                
+                should_emit = False
+                
+                # Always emit on state change to log it
+                if duration == 0:
+                    should_emit = True
+                    
+                # Emit periodically if risk is detected, but Council will filter based on duration
+                if analysis.health_risk_detected:
+                    should_emit = True
+
+                if should_emit:
+                    # Generate Thumbnail for Timeline
+                    thumb_io = io.BytesIO()
+                    # Create a small thumbnail for the UI
+                    thumb_img = screenshot.copy()
+                    thumb_img.thumbnail((320, 180))
+                    
+                    # Fix: Convert RGBA to RGB for JPEG
+                    if thumb_img.mode in ('RGBA', 'LA'):
+                        background = Image.new(thumb_img.mode[:-1], thumb_img.size, (255, 255, 255))
+                        background.paste(thumb_img, thumb_img.split()[-1])
+                        thumb_img = background
+                    elif thumb_img.mode != 'RGB':
+                        thumb_img = thumb_img.convert('RGB')
+                        
+                    thumb_img.save(thumb_io, format='JPEG', quality=70)
+                    thumb_base64 = base64.b64encode(thumb_io.getvalue()).decode('utf-8')
+
                     await self.emit_data({
-                        "text": f"Screen Analysis: {analysis.description}. Context: {analysis.emotional_tone}.",
+                        "text": f"Screen Analysis: {analysis.description}. Activity: {analysis.activity_category}. Duration: {duration} minutes. Context: {analysis.emotional_tone}.",
                         "type": "screen_observer",
-                        "raw_category": analysis.activity_category
+                        "raw_category": analysis.activity_category,
+                        "duration": duration,
+                        "image_base64": thumb_base64 # [NEW] For Visual Timeline
                     })
                     
             except Exception as e:

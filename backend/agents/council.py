@@ -84,6 +84,9 @@ async def synthesizer_node(state: CouncilState):
     doctor_res = state.get("doctor_output")
     coach_res = state.get("coach_output")
     memories = state.get("past_memories", [])
+    memory_context_str = json.dumps([m.statement for m in memories], indent=2) if memories else "None"
+    
+    from backend.agents.personas import USER_PROFILE
     
     context = f"""
     Dr. Nexus Assessment: {doctor_res.assessment if doctor_res else 'None'}
@@ -91,16 +94,55 @@ async def synthesizer_node(state: CouncilState):
     
     Guardian Assessment: {coach_res.assessment if coach_res else 'None'}
     Risk: {coach_res.risk_score if coach_res else 0}
-    
-    Past Relevant Episodes:
-    {json.dumps([m.statement for m in memories], indent=2) if memories else "None"}
     """
+    
+    # --- Deterministic Risk Check ---
+    from backend.core.risk_engine import calculate_deterministic_risk
+    import re
+    
+    # Extract duration from input if present (e.g. "Duration: 45 minutes")
+    # This is a simple heuristic since the ScreenSensor injects it into the text.
+    duration = 0
+    dur_match = re.search(r"Duration: (\d+)", state['input_data'])
+    if dur_match:
+        duration = int(dur_match.group(1))
+    # Also check if input text implies duration (e.g. "6 hours") for FileSensor inputs
+    else:
+        hours_match = re.search(r"(\d+)\s*hours?", state['input_data'])
+        if hours_match:
+            duration = int(hours_match.group(1)) * 60
+            
+    risk_calc = calculate_deterministic_risk(state['input_data'], duration)
+    
+    # We format the prompt itself with the extra variables
+    formatted_prompt = SYNTHESIZER_PROMPT.format(
+        user_profile=USER_PROFILE,
+        memory_context=memory_context_str,
+        doctor_output=context, 
+        coach_output="",
+        
+        # Inject Quantitative Data
+        quant_score=risk_calc['score'],
+        quant_level=risk_calc['level'],
+        quant_reason=risk_calc['reasoning']
+    )
+    
+    # Actually, let's do it properly.
+    prompt_filled = SYNTHESIZER_PROMPT.format(
+        user_profile=USER_PROFILE,
+        memory_context=memory_context_str,
+        doctor_output=f"{doctor_res.assessment} (Risk: {doctor_res.risk_score})" if doctor_res else "None",
+        coach_output=f"{coach_res.assessment} (Risk: {coach_res.risk_score})" if coach_res else "None",
+        quant_score=risk_calc['score'],
+        quant_level=risk_calc['level'],
+        quant_reason=risk_calc['reasoning']
+    )
     
     try:
         result = await llm_provider.generate_structured(
-            prompt=SYNTHESIZER_PROMPT,
+            prompt=prompt_filled,
             schema_model=CouncilActionPlan,
-            context=context
+            context="" # Context is already in the prompt
         )
     except Exception:
         result = CouncilActionPlan(summary="Error", risk_level="UNKNOWN", actions=[])

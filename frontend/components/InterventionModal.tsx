@@ -42,6 +42,13 @@ export default function InterventionModal() {
                     HIGH RISK DETECTED
                 </h2>
 
+                <button
+                    onClick={() => setIsOpen(false)}
+                    className="absolute top-4 right-4 text-red-500 hover:text-red-300 transition-colors"
+                >
+                    <XCircle size={32} />
+                </button>
+
                 <div className="bg-red-900/20 border border-red-800 p-6 rounded-md mb-8 text-left">
                     <p className="text-lg text-white mb-4 font-bold">
                         {data.summary}
