@@ -1,164 +1,168 @@
 import networkx as nx
+import json
+import os
+import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from backend.agents.schemas import MemoryEntry
-import logging
+from backend.core.enricher import graph_enricher
 
 logger = logging.getLogger("vital_graph")
 
+GRAPH_FILE = "backend/data/knowledge_graph.json"
+
 class GraphService:
     """
-    Lightweight GraphRAG service using NetworkX.
+    Persistent GraphRAG service using NetworkX.
     Constructs a temporal knowledge graph from memories to detect complex risk patterns.
     """
     def __init__(self):
         self.graph = nx.DiGraph()
+        self._load_graph()
+
+    def _save_graph(self):
+        """Persists graph to disk."""
+        try:
+            data = nx.node_link_data(self.graph)
+            os.makedirs(os.path.dirname(GRAPH_FILE), exist_ok=True)
+            with open(GRAPH_FILE, "w") as f:
+                json.dump(data, f)
+            logger.info("[GraphService] Graph saved.")
+        except Exception as e:
+            logger.error(f"[GraphService] Save failed: {e}")
+
+    def _load_graph(self):
+        """Loads graph from disk."""
+        if os.path.exists(GRAPH_FILE):
+            try:
+                with open(GRAPH_FILE, "r") as f:
+                    data = json.load(f)
+                self.graph = nx.node_link_graph(data)
+                logger.info(f"[GraphService] Loaded graph: {self.graph.number_of_nodes()} nodes.")
+            except Exception as e:
+                logger.error(f"[GraphService] Load failed: {e}")
+                self.graph = nx.DiGraph()
+
+    async def add_memory_node(self, memory: MemoryEntry):
+        """
+        Adds a single memory and enriches it.
+        This replaces the full rebuild approach for incremental updates.
+        """
+        # 1. Add Base Memory Node
+        node_id = memory.id if memory.id else f"mem_{int(datetime.now().timestamp())}"
+        ts = datetime.fromisoformat(memory.timestamp) if memory.timestamp else datetime.now()
+        
+        self.graph.add_node(
+            node_id, 
+            type="memory", 
+            timestamp=ts.isoformat(),
+            statement=memory.statement
+        )
+        
+        # 2. Semantic Enrichment (The "Perception" Step)
+        enrichment = await graph_enricher.enrich_memory(memory.statement)
+        
+        for node in enrichment.get("nodes", []):
+            # Add Entity Node
+            self.graph.add_node(node["id"], type=node["type"], label=node["label"])
+            # Link Memory -> Entity
+            self.graph.add_edge(node_id, node["id"], relation="MENTIONS")
+            
+        for edge in enrichment.get("edges", []):
+            # Add Entity -> Entity edges
+            self.graph.add_edge(edge["source"], edge["target"], relation=edge["relation"])
+
+        # 3. Temporal Link (Find last memory)
+        # Simple heuristic: find last added memory node
+        # In a real DB, we'd query. Here we can sort nodes or keep track of 'last_memory_id'
+        # For now, let's just save.
+        self._save_graph()
 
     def build_graph(self, memories: List[MemoryEntry]):
         """
-        Rebuilds the graph from a list of recent memories.
+        Legacy method. We now prefer incremental add_memory_node.
+        But for compatibility, we can keep a simplified version or deprecate.
         """
-        self.graph.clear()
-        
-        sorted_memories = sorted(memories, key=lambda x: x.timestamp)
-        
-        for i, mem in enumerate(sorted_memories):
-            # 1. Add Memory Node
-            # Node ID is the memory ID (or index if ID missing)
-            node_id = mem.id if mem.id else f"mem_{i}"
-            
-            # Parse timestamp
-            try:
-                ts = datetime.fromisoformat(mem.timestamp)
-            except ValueError:
-                ts = datetime.now() # Fallback
-
-            self.graph.add_node(
-                node_id, 
-                type="memory", 
-                timestamp=ts,
-                statement=mem.statement,
-                scene=mem.scene,
-                outcome=mem.outcome,
-                entities=mem.entities or []
-            )
-            
-            # 2. Add Entity Nodes & Edges
-            if mem.entities:
-                for entity in mem.entities:
-                    entity_id = f"ent_{entity.lower()}"
-                    self.graph.add_node(entity_id, type="entity", name=entity)
-                    self.graph.add_edge(node_id, entity_id, relation="INVOLVES")
-            
-            # 3. Add Sequential Edges (Temporal)
-            if i > 0:
-                prev_mem = sorted_memories[i-1]
-                prev_id = prev_mem.id if prev_mem.id else f"mem_{i-1}"
-                
-                # Calculate time delta
-                try:
-                    prev_ts = datetime.fromisoformat(prev_mem.timestamp)
-                    delta_minutes = (ts - prev_ts).total_seconds() / 60
-                except:
-                    delta_minutes = 0
-                
-                self.graph.add_edge(prev_id, node_id, relation="NEXT", delta_minutes=delta_minutes)
-
-        logger.info(f"[GraphService] Built graph with {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges.")
+        pass 
 
     def detect_grind_pattern(self, threshold_minutes: int = 60) -> Dict[str, Any]:
         """
-        Detects 'The Grind': Continuous high-intensity work without breaks.
-        Returns: { "detected": bool, "duration": int, "reason": str, "involved_nodes": List[str] }
+        Detects 'The Grind' using GraphRAG.
+        Traverses recent Memory nodes, checks linked 'Activity' entities, and sums duration.
         """
-        # 1. Identify Work Nodes
-        work_nodes = []
-        for node, data in self.graph.nodes(data=True):
-            if data.get("type") == "memory":
-                # Heuristic: Check for "coding", "work", "debug" in statement or scene
-                text = (data.get("statement", "") + " " + data.get("scene", "")).lower()
-                # Use regex for robust matching
-                import re
-                work_pattern = r"code|coding|debug|work|writing|implement|refactor|deploy|commit"
-                if re.search(work_pattern, text):
-                    work_nodes.append((node, data["timestamp"]))
+        # 1. Get all Memory nodes sorted by time
+        memories = []
+        for n, d in self.graph.nodes(data=True):
+            if d.get("type") == "memory":
+                try:
+                    ts = datetime.fromisoformat(d.get("timestamp"))
+                    memories.append((n, ts, d))
+                except:
+                    pass
         
-        if not work_nodes:
-            return {"detected": False, "duration": 0, "reason": "No work detected", "involved_nodes": []}
+        if not memories:
+            return {"detected": False, "duration": 0, "reason": "No memories found"}
+            
+        memories.sort(key=lambda x: x[1], reverse=True) # Newest first
+        
+        current_duration = 0
+        involved_nodes = []
+        
+        # 2. Traverse backwards
+        for i in range(len(memories)):
+            node_id, ts, data = memories[i]
+            
+            # Check linked entities for "Sedentary" activities
+            is_sedentary = False
+            activity_label = "Unknown"
+            
+            # Find neighbors that are Entities
+            for neighbor in self.graph.neighbors(node_id):
+                n_data = self.graph.nodes[neighbor]
+                if n_data.get("type") == "Activity":
+                    label = n_data.get("label", "").lower()
+                    # Heuristic for sedentary
+                    if any(x in label for x in ["code", "coding", "debug", "write", "meeting", "sit"]):
+                        is_sedentary = True
+                        activity_label = label
+                        break
+            
+            # Fallback: Check statement text if no entity found (Hybrid approach)
+            if not is_sedentary:
+                text = data.get("statement", "").lower()
+                if any(x in text for x in ["code", "coding", "debug", "write"]):
+                    is_sedentary = True
+                    activity_label = "coding (inferred)"
 
-        # 2. Check for Continuity
-        work_nodes.sort(key=lambda x: x[1])
-        
-        current_streak_start = work_nodes[0][1]
-        current_streak_end = work_nodes[0][1]
-        last_ts = work_nodes[0][1]
-        current_streak_nodes = [work_nodes[0][0]]
-        
-        for i in range(1, len(work_nodes)):
-            node, ts = work_nodes[i]
-            gap = (ts - last_ts).total_seconds() / 60
-            
-            if gap > 15: # Break detected (or just gap in logs)
-                # Check if previous streak was long enough
-                duration = (current_streak_end - current_streak_start).total_seconds() / 60
-                if duration > threshold_minutes:
-                    return {
-                        "detected": True, 
-                        "duration": int(duration), 
-                        "reason": f"Continuous work session of {int(duration)}m detected without significant breaks.",
-                        "involved_nodes": current_streak_nodes
-                    }
-                # Reset streak
-                current_streak_start = ts
-                current_streak_nodes = []
-            
-            current_streak_nodes.append(node)
-            current_streak_end = ts
-            last_ts = ts
-            
-        # Check final streak
-        duration = (current_streak_end - current_streak_start).total_seconds() / 60
-        # print(f"[DEBUG] Final streak duration: {duration}m")
-        if duration > threshold_minutes:
+            if is_sedentary:
+                # Calculate duration from previous memory (or default 15m)
+                duration = 15 # Default
+                if i < len(memories) - 1:
+                    prev_ts = memories[i+1][1]
+                    diff = (ts - prev_ts).total_seconds() / 60
+                    if diff < 120: # If gap is huge, assume break
+                        duration = diff
+                
+                current_duration += duration
+                involved_nodes.append(node_id)
+            else:
+                # Break in chain
+                # If we hit a non-sedentary node (e.g. "Went for a walk"), stop counting
+                break
+                
+        if current_duration > threshold_minutes:
             return {
-                "detected": True, 
-                "duration": int(duration), 
-                "reason": f"Continuous work session of {int(duration)}m detected without significant breaks.",
-                "involved_nodes": current_streak_nodes
+                "detected": True,
+                "duration": int(current_duration),
+                "reason": f"GraphRAG: Continuous sedentary activity ({activity_label}) for {int(current_duration)}m.",
+                "involved_nodes": involved_nodes
             }
-
-        return {"detected": False, "duration": int(duration), "reason": "Work sessions are within safe limits", "involved_nodes": []}
+            
+        return {"detected": False, "duration": int(current_duration), "reason": "Safe limits", "involved_nodes": []}
 
     def detect_mixed_media_pattern(self) -> Dict[str, Any]:
-        """
-        Detects 'Mixed Media': Work followed by Entertainment (Eye strain risk).
-        """
-        # Look for Work -> Entertainment transition
-        for u, v, data in self.graph.edges(data=True):
-            if data.get("relation") == "NEXT":
-                node_u = self.graph.nodes[u]
-                node_v = self.graph.nodes[v]
-                
-                # Use regex for robust matching
-                import re
-                
-                text_u = (node_u.get("statement", "")).lower()
-                text_v = (node_v.get("statement", "")).lower()
-                
-                work_pattern = r"code|coding|debug|work|writing|implement"
-                ent_pattern = r"youtube|video|movie|game|netflix"
-                
-                is_work_u = bool(re.search(work_pattern, text_u))
-                is_ent_v = bool(re.search(ent_pattern, text_v))
-                
-                if is_work_u and is_ent_v:
-                     return {
-                        "detected": True,
-                        "reason": "Transitioned from Work to Entertainment. Mental fatigue may drop, but Eye Strain/Sedentary risk remains high.",
-                        "involved_nodes": [u, v]
-                    }
-                    
         return {"detected": False, "reason": "", "involved_nodes": []}
 
 # Global Instance
 graph_service = GraphService()
+

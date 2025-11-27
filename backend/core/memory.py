@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 from backend.core.llm import llm_provider
 from backend.agents.schemas import MemoryEntry
+from backend.core.graph_service import graph_service
 
 class Hippocampus:
     """
@@ -54,6 +55,9 @@ class Hippocampus:
                 ids=[str(uuid.uuid4())]
             )
             print(f"[Hippocampus] Memory Stored: {entry.statement}")
+            
+            # 5. Update Knowledge Graph (GraphRAG)
+            await graph_service.add_memory_node(entry)
             
         except Exception as e:
             print(f"[Hippocampus] Error adding memory: {e}")
