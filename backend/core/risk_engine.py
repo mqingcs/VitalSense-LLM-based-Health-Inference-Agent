@@ -9,6 +9,28 @@ class RiskEngine:
     Combines fast deterministic checks with deep GraphRAG pattern detection.
     """
     
+    def __init__(self):
+        self.overrides: Dict[str, float] = {} # key: risk_type, value: expiration_timestamp
+
+    def set_override(self, risk_type: str, duration_minutes: int):
+        """
+        Sets an override for a specific risk type.
+        """
+        import time
+        expiration = time.time() + (duration_minutes * 60)
+        self.overrides[risk_type] = expiration
+        print(f"[RiskEngine] Override set for '{risk_type}' until {expiration}")
+
+    def _is_overridden(self, risk_type: str) -> bool:
+        """Checks if a risk type is currently overridden."""
+        import time
+        if risk_type in self.overrides:
+            if time.time() < self.overrides[risk_type]:
+                return True
+            else:
+                del self.overrides[risk_type] # Expired
+        return False
+
     def calculate_deterministic_risk(self, text: str, duration_minutes: int = 0) -> dict:
         """
         Calculates a deterministic risk score (0.0 - 1.0) based on keywords and duration.
@@ -22,28 +44,31 @@ class RiskEngine:
         high_severity = ["faint", "collapse", "chest pain", "severe", "agony", "unbearable", "crushing"]
         medium_severity = ["headache", "pain", "dizzy", "blur", "strain", "tired", "exhausted", "migraine", "throbbing"]
         
-        for word in high_severity:
-            if word in text_lower:
-                score += 0.5
-                reasons.append(f"High severity keyword: '{word}' (+0.5)")
-                break # Count max one high severity trigger to avoid stacking too fast
-                
-        for word in medium_severity:
-            if word in text_lower:
-                score += 0.3
-                reasons.append(f"Medium severity keyword: '{word}' (+0.3)")
-                break
+        if not self._is_overridden("symptoms"):
+            for word in high_severity:
+                if word in text_lower:
+                    score += 0.5
+                    reasons.append(f"High severity keyword: '{word}' (+0.5)")
+                    break # Count max one high severity trigger to avoid stacking too fast
+                    
+            for word in medium_severity:
+                if word in text_lower:
+                    score += 0.3
+                    reasons.append(f"Medium severity keyword: '{word}' (+0.3)")
+                    break
 
         # 2. Neglect Keywords
         neglect = ["without water", "no water", "dehydrated", "skipped meal", "no food", "starving", "haven't eaten"]
-        for word in neglect:
-            if word in text_lower:
-                score += 0.2
-                reasons.append(f"Neglect keyword: '{word}' (+0.2)")
-                break
+        if not self._is_overridden("neglect"):
+            for word in neglect:
+                if word in text_lower:
+                    score += 0.2
+                    reasons.append(f"Neglect keyword: '{word}' (+0.2)")
+                    break
 
         # 3. Duration Multipliers (Simple)
-        if duration_minutes > 0:
+        # "duration" override blocks all duration-based risks (e.g. "I'm working late")
+        if duration_minutes > 0 and not self._is_overridden("duration"):
             if duration_minutes > 360: # 6 hours
                 score += 0.4
                 reasons.append(f"Extreme duration (>6h): {duration_minutes}m (+0.4)")

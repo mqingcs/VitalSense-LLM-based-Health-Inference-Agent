@@ -21,10 +21,17 @@ from backend.core.memory import hippocampus
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 
 # --- Lifecycle Manager ---
+from backend.core.pulse import vital_pulse
+
+# --- Lifecycle Manager ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print("--- [VitalOS] System Boot Sequence Initiated ---")
+    
+    # 0. Initialize Pulse (Heartbeat)
+    vital_pulse.socket_manager = sio
+    pulse_task = asyncio.create_task(vital_pulse.start())
     
     # 1. Initialize Sensors & Actuators
     # mock_sensor = MockSensor(event_bus)
@@ -96,6 +103,8 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     print("--- [VitalOS] System Shutdown ---")
+    vital_pulse.stop()
+    pulse_task.cancel()
     # await mock_sensor.stop()
     await screen_sensor.stop()
     await file_sensor.stop()

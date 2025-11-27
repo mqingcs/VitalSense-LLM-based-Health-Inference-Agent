@@ -7,6 +7,7 @@ from backend.core.llm import llm_provider
 from backend.core.profile_service import profile_service
 from backend.core.memory import hippocampus
 from backend.core.graph_service import graph_service
+from backend.core.risk_engine import risk_engine
 from backend.agents.personas import LIAISON_PROMPT
 
 # --- Tools ---
@@ -25,14 +26,6 @@ def update_profile(key: str, value: str, action: str = "add"):
     elif key == "condition":
         profile_service.update_condition(value, action)
     elif key == "habit":
-        # Habits are stored in traits list for now in ProfileService, let's fix that or map it
-        # ProfileService has habits list but update_trait/condition methods. 
-        # Let's assume we add a update_habit method or map it.
-        # Checking ProfileService... it has habits field but no update_habit method in the snippet I wrote.
-        # I will assume I need to add it or use a generic update.
-        # For now, let's just use traits for habits or add it dynamically.
-        # Actually, let's implement it properly in ProfileService later or patch it here.
-        # Patching:
         if action == "add" and value not in profile_service.profile.habits:
             profile_service.profile.habits.append(value)
         elif action == "remove" and value in profile_service.profile.habits:
@@ -79,7 +72,44 @@ def query_graph(question: str):
         return f"Graph Analysis: Grind detected? {grind['detected']}. Duration: {grind['duration']}m."
     return "Graph query not fully implemented yet."
 
-tools = [update_profile, manage_memory, set_preference, query_graph]
+@tool
+def set_risk_override(risk_type: str, duration_hours: int, reason: str):
+    """
+    Overrides (suppresses) a specific risk factor for a set duration.
+    Use this when the user explicitly wants to ignore a risk (e.g., "I'm staying up late").
+    Args:
+        risk_type: 'duration' (for time/work limits), 'symptoms', or 'neglect'.
+        duration_hours: How long to suppress this risk (in hours).
+        reason: Why the override is being set.
+    """
+    risk_engine.set_override(risk_type, duration_hours * 60)
+    return f"Risk Override Set: Suppressing '{risk_type}' for {duration_hours} hours. Reason: {reason}"
+
+@tool
+def fetch_profile_context(category: str):
+    """
+    Fetches specific details from the user's profile.
+    Args:
+        category: 'traits', 'conditions', 'habits', 'preferences', or 'summary'.
+    """
+    if category == "summary":
+        return profile_service.get_context_str()
+    
+    # Access internal profile object directly for granular access
+    # (In a real system, ProfileService would have granular getters)
+    p = profile_service.profile
+    if category == "traits":
+        return f"Traits: {p.traits}"
+    elif category == "conditions":
+        return f"Conditions: {p.conditions}"
+    elif category == "habits":
+        return f"Habits: {p.habits}"
+    elif category == "preferences":
+        return f"Preferences: {p.preferences}"
+        
+    return "Unknown category. Available: traits, conditions, habits, preferences, summary."
+
+tools = [update_profile, manage_memory, set_preference, query_graph, set_risk_override, fetch_profile_context]
 
 # --- Agent ---
 
@@ -90,15 +120,23 @@ class LiaisonState(Dict):
 async def liaison_node(state: LiaisonState):
     print("--- [Liaison] Thinking ---")
     
-    # 1. Get Profile Context
-    profile_str = profile_service.get_context_str()
+    # 1. Get Profile Summary (Lightweight)
+    # We no longer dump the whole thing. We give a high-level summary.
+    profile_summary = f"User: {profile_service.profile.name}. Role: {profile_service.profile.role}."
     
     # 2. Construct Prompt
-    system_msg = SystemMessage(content=LIAISON_PROMPT.format(user_profile=profile_str))
+    autonomy_instruction = """
+    CRITICAL INSTRUCTION: You are an AUTONOMOUS AGENT.
+    1. **On-Demand Memory**: You do NOT have the full user profile loaded. If you need to know about allergies, habits, or preferences to answer a question, use `fetch_profile_context`.
+    2. **Proactivity**: If you see a risk, act on it.
+    3. **Task Chaining**: Combine tools to solve problems.
+    """
+    
+    system_msg = SystemMessage(content=LIAISON_PROMPT.format(user_profile=profile_summary) + "\n\n" + autonomy_instruction)
     messages = [system_msg] + state["messages"]
     
     # 3. ReAct Loop
-    max_turns = 3
+    max_turns = 5
     current_messages = messages.copy()
     
     for _ in range(max_turns):
@@ -129,6 +167,10 @@ async def liaison_node(state: LiaisonState):
                     tool_result = set_preference.invoke(tool_args)
                 elif tool_name == "query_graph":
                     tool_result = query_graph.invoke(tool_args)
+                elif tool_name == "set_risk_override":
+                    tool_result = set_risk_override.invoke(tool_args)
+                elif tool_name == "fetch_profile_context":
+                    tool_result = fetch_profile_context.invoke(tool_args)
                 
                 print(f"--- [Liaison] Tool Result: {tool_result} ---")
                 
@@ -144,7 +186,7 @@ async def liaison_node(state: LiaisonState):
             # No tool call, just return the response
             return {"messages": [AIMessage(content=response_text)]}
             
-    return {"messages": [AIMessage(content="I'm thinking too much. Let's pause.")]}
+    return {"messages": [AIMessage(content="I've done a lot of thinking. Let's pause.")]}
 
 # --- Workflow ---
 
