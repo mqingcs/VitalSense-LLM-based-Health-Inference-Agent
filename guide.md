@@ -1,219 +1,200 @@
-# VitalSense: The Ultimate Codex
+# VitalSense: The Sentient Health Inference Agent
+## Comprehensive Project Guide & Developer Handbook
 
-> **To the Inheritor:**
-> You are receiving the "VitalSense" project (Internal Kernel: "VitalOS"). This is an **Agentic Digital Twin** designed to monitor, reason about, and actively improve a user's health and productivity.
->
-> This document is your DNA. It contains the **complete logic, architecture, implementation details, and evolution history** of the system. It is designed to let you reconstruct the project from scratch if necessary.
+> **"Highly Autonomous. Highly Intelligent. Highly Perceptive."**
 
----
-
-## 1. Project Identity & Philosophy
-
-*   **Name**: VitalSense
-*   **Core Concept**: A "Sentient" Private Assistant.
-*   **Philosophy**:
-    *   **Agentic**: It doesn't just show data; it *intervenes*.
-    *   **Biological**: It sleeps, dreams (consolidates memory), and adapts (learns tolerance).
-    *   **Ambient**: It communicates via a "Bio-Field" (color/motion) to influence the user's subconscious state.
-    *   **Privacy-First**: All raw data is stored locally (`backend/data/`). LLM calls are anonymized/structured.
-    *   **Digital Brutalism**: The UI is raw, data-dense, and beautiful (Cyan/Red/Amber/Black).
+This document serves as the ultimate source of truth for the **VitalSense** project. It details the architectural vision, core components, implementation specifics, and the evolutionary path of the agent. It is designed to allow any developer (or AI agent) to instantly grasp the system's complexity and continue its development.
 
 ---
 
-## 2. Technical Stack
+## 1. Project Vision & Core Philosophy
 
-### Backend (`/backend`)
-*   **Language**: Python 3.9+
-*   **Framework**: `FastAPI` (ASGI Server).
-*   **Real-time**: `python-socketio` (WebSocket).
-*   **AI Orchestration**: `LangGraph` (Multi-Agent Workflow), `LangChain`.
-*   **LLM**: `Google Gemini 1.5 Flash` (via `google-generativeai`).
-*   **Memory (Vector)**: `ChromaDB` (Persistent Vector Store).
-*   **Memory (Graph)**: `NetworkX` (In-memory Temporal Graph).
-*   **Perception**: `pyautogui` (Screen Capture), `watchdog` (File Monitoring).
-*   **Validation**: `Pydantic` (Strict Schema Enforcement).
+The goal of VitalSense is not just to be a "chatbot" or a "health tracker," but to be a **Sentient Private Assistant**.
 
-### Frontend (`/frontend`)
-*   **Framework**: `Next.js 14` (App Router).
-*   **Language**: `TypeScript`.
-*   **Styling**: `Tailwind CSS`.
-*   **3D Graphics**: `Three.js` + `React Three Fiber` (R3F) + `Drei`.
-*   **Shaders**: Custom GLSL (for BioField).
-*   **Real-time**: `socket.io-client`.
-*   **Icons**: `Lucide React`.
+### The "Sentient" Trinity
+1.  **High Autonomy**: The agent acts without constant prompting. It manages its own memory (consolidation), suppresses its own alerts when asked ("Focus Mode"), and decides which tools to use to solve complex problems.
+2.  **High Intelligence**: It doesn't just match keywords. It performs **GraphRAG** (Graph Retrieval-Augmented Generation) to understand context, calculates time durations, detects complex patterns (e.g., "The Grind"), and synthesizes multi-modal data.
+3.  **High Perception**: It "sees" everything—user messages, screen activity (simulated), physiological states (inferred)—and builds a persistent, evolving model of the user (`UserProfile`).
 
 ---
 
-## 3. The "Sentient" Architecture
+## 2. System Architecture
 
-The system operates on a continuous **Perception-Cognition-Action** loop, augmented by a **Biological Memory Cycle**.
+The project follows a modern **Client-Server** architecture with a heavy emphasis on **Agentic AI** in the backend.
 
-### 3.1. The Loop (Real-Time)
-1.  **Perception**: Sensors (`ScreenSensor`, `FileSensor`) capture raw data.
-2.  **Ingestion**: Data is standardized into `VitalEvent` and broadcast via Event Bus.
-3.  **Cognition (The Council)**: A LangGraph workflow processes the event:
-    *   **Triage**: Needs Doctor? Needs Coach?
-    *   **Experts**: Dr. Nexus (Medical) & Guardian (Lifestyle) analyze.
-    *   **Synthesis**: The Chair combines opinions + **Risk Engine** + **GraphRAG**.
-4.  **Action**:
-    *   **Maestro**: Adjusts the ambient `BioField` (Color/Brightness).
-    *   **Actuator**: Sends `RiskCard` to Chat if High Risk.
-5.  **Memory**: The event is stored in `Hippocampus` (ChromaDB) and `GraphService` (NetworkX).
+### Frontend (The "Face")
+*   **Tech Stack**: Next.js (React), TypeScript, Tailwind CSS, Framer Motion.
+*   **Design Language**: "Digital Brutalism" meets "Glassmorphism". Dark mode, neon accents, blur effects, and smooth animations.
+*   **Key Components**:
+    *   `ChatInterface.tsx`: The main communication hub. Renders rich UI elements like `RiskCard`.
+    *   `RiskCard.tsx`: An interactive, glass-morphic card for health interventions. Supports "Dismiss" (adjusts tolerance) and "Acknowledge" actions.
+    *   `SessionTimeline.tsx`: Visualizes the user's activity history.
+    *   `MemoryGalaxy.tsx`: A 3D/2D visualization of the Knowledge Graph.
 
-### 3.2. The Dream (Offline Consolidation)
-*   **Trigger**: System Startup after >4 hours of downtime.
-*   **Process**:
-    1.  **Cluster**: Groups raw "Moment" logs from the previous session.
-    2.  **Synthesize**: Uses LLM to generate a high-level "Episode" summary.
-    3.  **Archive**: Moves raw logs to `backend/data/cold_storage/archive.jsonl` (Zero Data Loss).
-    4.  **Prune**: Deletes raw logs from active memory to maintain speed.
-
-### 3.3. The Negotiation (Feedback Loop)
-*   **Trigger**: User interacts with a `RiskCard` ("Not now").
-*   **Process**:
-    1.  Frontend emits `adjust_tolerance(risk_type, amount)`.
-    2.  Backend `RiskEngine` updates `UserProfile.risk_modifiers`.
-    3.  Future risk calculations are dampened for that specific risk type.
+### Backend (The "Brain")
+*   **Tech Stack**: Python (FastAPI), LangGraph, LangChain, ChromaDB, NetworkX.
+*   **Communication**: Socket.IO for real-time, bi-directional events (`analysis_result`, `risk_card`).
+*   **Agent Framework**: **LangGraph** is used to orchestrate the multi-agent workflow.
 
 ---
 
-## 4. Directory Map & Implementation Details
+## 3. Core Modules (The "Organs")
 
-### `/backend`
+### A. Hippocampus (Memory System)
+*   **File**: `backend/core/memory.py`
+*   **Role**: Manages Episodic Memory.
+*   **Tech**: ChromaDB (Vector Store).
+*   **Features**:
+    *   **`add_memory()`**: Embeds and stores user events.
+    *   **`recall()`**: Semantic search for relevant past events.
+    *   **`consolidate_memories()`**: The "Sleep" function. Runs on startup if a >4h gap is detected. Clusters recent memories, synthesizes them into high-level insights, and archives raw data to `cold_storage/`.
 
-#### `main.py`
-*   **Role**: The Kernel.
-*   **Key Implementation**:
-    *   `lifespan`: Manages startup/shutdown of sensors and `VitalPulse`.
-    *   `socket_app`: Wraps FastAPI to handle WebSocket events.
-    *   `handle_chat`: Routes user messages to `Liaison` agent.
-    *   `run_council`: The main callback for `DATA_INGESTED` events.
+### B. GraphService (Knowledge Graph)
+*   **File**: `backend/core/graph_service.py`
+*   **Role**: Manages the Semantic Knowledge Graph.
+*   **Tech**: NetworkX.
+*   **Features**:
+    *   **`add_memory_node()`**: Converts linear memories into a graph structure (Nodes: Memory, Entity, Activity; Edges: MENTIONS, HAS_ATTRIBUTE).
+    *   **`detect_grind_pattern()`**: Traverses the graph to find continuous blocks of "sedentary" or "work" nodes.
+    *   **`get_recent_activity()`**: **[NEW]** Calculates the duration of recent events and returns a timeline. Used for answering "What did I do recently?".
 
-#### `core/`
-*   **`pulse.py`**:
-    *   **`VitalPulse`**: Singleton. Checks `startup_gap`. Triggers `hippocampus.consolidate_memories()`.
-*   **`risk_engine.py`**:
-    *   **`RiskEngine`**: Hybrid Calculator.
-    *   **`calculate_deterministic_risk`**: Regex/Keyword based (Fast).
-    *   **`assess_complex_risks`**: Graph traversal (e.g., "The Grind" pattern).
-    *   **`adjust_tolerance`**: Modifies `user_profile` based on feedback.
-*   **`memory.py`**:
-    *   **`Hippocampus`**: Wrapper for ChromaDB.
-    *   **`consolidate_memories`**: The "Dream" logic.
-*   **`graph_service.py`**:
-    *   **`GraphService`**: Manages NetworkX graph.
-    *   **`detect_grind_pattern`**: Traverses recent nodes to sum "Work" duration without "Break".
-*   **`profile_service.py`**:
-    *   **`ProfileService`**: Manages `user_profile.json`.
-    *   **`update_condition`**: Dynamically adds/removes health conditions that affect risk.
+### C. RiskEngine (The "Amygdala")
+*   **File**: `backend/core/risk_engine.py`
+*   **Role**: Assesses health risks in real-time.
+*   **Features**:
+    *   **`assess_risk()`**: Calculates risk scores based on user activity and `UserProfile` modifiers.
+    *   **`adjust_tolerance()`**: **[NEW]** The feedback loop. If a user dismisses a card, the engine *lowers* the sensitivity for that risk type (e.g., "sedentary" modifier 1.0 -> 0.9).
+    *   **`set_override()`**: Allows the Liaison agent to suppress specific risks for a set duration (Focus Mode).
 
-#### `agents/`
-*   **`council.py`**:
-    *   **`council_graph`**: The LangGraph workflow.
-    *   **Nodes**: `triage`, `doctor`, `coach`, `synthesizer`, `maestro`.
-    *   **Logic**: Synthesizer node explicitly calls `RiskEngine` to fuse LLM wisdom with deterministic math.
-*   **`liaison.py`**:
-    *   **`liaison_agent`**: ReAct agent (LangChain).
-    *   **Tools**: `update_profile`, `manage_memory`, `set_risk_override`.
-    *   **Prompt**: Designed to be empathetic and proactive.
-*   **`schemas.py`**:
-    *   **Pydantic Models**: `CouncilActionPlan`, `RiskAssessment`, `MemoryEntry`.
-    *   **Critical Fix**: `MemoryEntry.remarks` has `default=None` to support legacy data.
-
-#### `perception/`
-*   **`screen_sensor.py`**: Uses `pyautogui` + Gemini Vision.
-*   **`file_sensor.py`**: Uses `watchdog` to monitor JSON files.
-
-### `/frontend`
-
-#### `components/`
-*   **`ChatInterface.tsx`**:
-    *   **`RiskCard`**: The interactive UI component.
-    *   **Logic**: Listens for `analysis_result` and `risk_card`. Emits `adjust_tolerance`.
-    *   **Fix**: Removed emoji text generation to fix build error.
-*   **`BioField.tsx`**:
-    *   **Shader**: Custom GLSL for the "Living Background".
-    *   **Uniforms**: Controlled by `Maestro` (Color, Speed, Turbulence).
-*   **`CouncilRoom.tsx`**:
-    *   **Log**: Displays the internal thought process of the agents.
-*   **`MemoryGalaxy.tsx`**:
-    *   **3D Graph**: Visualizes the `Hippocampus` using R3F.
+### D. ProfileService (The "Ego")
+*   **File**: `backend/core/profile_service.py`
+*   **Role**: Manages the persistent `UserProfile`.
+*   **Schema**:
+    *   `name`, `role` (e.g., "Software Engineer").
+    *   `traits`, `conditions` (e.g., "Back Pain"), `habits`.
+    *   `preferences` (e.g., `mute_alerts`).
+    *   `risk_modifiers` (Dynamic multipliers).
 
 ---
 
-## 5. The "Final Evolution" (Phase 7)
+## 4. The Agent Swarm
 
-This phase transformed the system from a "Tool" to a "Being".
+### 1. Liaison Agent (The "Frontman")
+*   **File**: `backend/agents/liaison.py`
+*   **Role**: The primary interface with the user. It is **highly autonomous**.
+*   **Tools**:
+    *   `query_graph`: **[Smart Tool]** Combines timeline analysis (structure) and semantic search (content) to answer complex queries.
+    *   `set_preference`: Mutes alerts/changes settings.
+    *   `manage_memory`: Searches/Deletes memories.
+    *   `update_profile`: Learns new user traits/conditions.
+*   **Behavior**: It uses a ReAct loop to "think" before answering. It can chain tools (e.g., check profile -> query graph -> answer).
 
-### 5.1. Wake-Up Consolidation ("Dreams")
-*   **Problem**: Raw sensor logs (every 5s) bloat the database and context window.
-*   **Solution**:
-    *   On startup, if `gap > 4h`:
-    *   **Compress**: 1000 "Screen Observations" -> 1 "Work Session" Episode.
-    *   **Archive**: Raw data moves to `cold_storage`.
-    *   **Result**: The agent remembers "I worked all afternoon" (Human-like) instead of "I saw a screen at 1:00, 1:05, 1:10..." (Robot-like).
-
-### 5.2. Interactive Negotiation
-*   **Problem**: Constant alerts annoy the user and lead to "Alert Fatigue".
-*   **Solution**:
-    *   **Risk Cards**: UI allows "Not Now" (Dismiss).
-    *   **Math**: Dismissal = `tolerance += 0.1`.
-    *   **Result**: The agent learns *your* specific threshold for stress/sedentary behavior.
+### 2. Council Agent (The "Subconscious")
+*   **File**: `backend/agents/council.py`
+*   **Role**: Runs in the background to analyze deeper patterns.
+*   **Personas**:
+    *   **Dr. Nexus**: Medical/Physiological analysis.
+    *   **Guardian**: Safety/Risk analysis.
+    *   **Chair**: Synthesizes inputs into a `CouncilActionPlan`.
 
 ---
 
-## 6. How to Run
+## 5. Key Workflows & Features
+
+### 1. The "Wake-Up" Consolidation Protocol
+*   **Trigger**: System startup.
+*   **Logic**: Checks time since last shutdown. If > 4 hours, triggers `hippocampus.consolidate_memories()`.
+*   **Outcome**: Raw memories are summarized into "Daily Insights" and moved to cold storage, keeping the active context window clean and efficient.
+
+### 2. Interactive Feedback Loop
+*   **Trigger**: User clicks "Dismiss" on a `RiskCard` in the frontend.
+*   **Flow**: Frontend emits `risk_response` -> Backend calls `risk_engine.adjust_tolerance()` -> Risk modifier for that category is reduced.
+*   **Result**: The system "learns" not to annoy the user about that specific issue.
+
+### 3. Autonomy: Focus Mode
+*   **Trigger**: User says "I need to focus, don't remind me."
+*   **Flow**: Liaison Agent recognizes intent -> Calls `set_preference('mute_alerts', 'true')` -> `ProfileService` updates preference -> `NotificationActuator` suppresses future alerts.
+
+### 4. Intelligence: Deep Recall
+*   **Trigger**: User says "What have I done recently?" (in any language).
+*   **Flow**: Liaison Agent calls `query_graph` -> `GraphService` retrieves recent nodes AND calculates durations -> Agent synthesizes a detailed, time-aware response.
+
+---
+
+## 6. Project File Structure
+
+```text
+VitalSense/
+├── backend/
+│   ├── agents/
+│   │   ├── council.py       # The background reasoning council
+│   │   ├── liaison.py       # The main user-facing agent
+│   │   ├── personas.py      # Prompts and persona definitions
+│   │   └── schemas.py       # Pydantic models (MemoryEntry, UserProfile)
+│   ├── core/
+│   │   ├── memory.py        # Hippocampus (ChromaDB)
+│   │   ├── graph_service.py # Knowledge Graph (NetworkX)
+│   │   ├── risk_engine.py   # Risk assessment logic
+│   │   ├── profile_service.py # User profile management
+│   │   ├── enricher.py      # LLM-based entity extraction
+│   │   └── llm.py           # LLM provider (Gemini)
+│   ├── data/                # Persistent storage (JSON, ChromaDB)
+│   └── main.py              # FastAPI app & Socket.IO server
+├── frontend/
+│   ├── components/
+│   │   ├── ChatInterface.tsx # Main chat UI
+│   │   ├── RiskCard.tsx      # Interactive intervention card
+│   │   └── ...
+│   └── ...
+├── tests/
+│   ├── test_autonomy.py      # Verification for agent autonomy
+│   ├── test_final_evolution.py # Verification for consolidation & feedback
+│   └── ...
+└── guide.md                  # THIS FILE
+```
+
+---
+
+## 7. Setup & Run
+
+### Prerequisites
+*   Python 3.10+
+*   Node.js 18+
+*   Gemini API Key
 
 ### Backend
 ```bash
 cd backend
-# 1. Activate Venv
-source .venv/bin/activate
-# 2. Install Deps
 pip install -r requirements.txt
-# 3. Set Key
-export GEMINI_API_KEY="your_key_here"
-# 4. Run
-python -m backend.main
+export GOOGLE_API_KEY="your_key"
+python main.py
 ```
+
+### Local LLM Support (LM Studio / Qwen)
+To use a local model (e.g., Qwen via LM Studio) instead of Gemini:
+1.  **LM Studio**: Load your model and start the Local Server (default port 1234).
+2.  **Environment**: Set the following variables:
+    ```bash
+    export LLM_PROVIDER="local"
+    export LOCAL_LLM_URL="http://localhost:1234/v1"
+    export LOCAL_LLM_MODEL="qwen-2.5-7b-instruct" # Optional, matches your loaded model
+    ```
+3.  **Run**: Start the backend as usual. The system will auto-detect the provider.
 
 ### Frontend
 ```bash
 cd frontend
-# 1. Install
 npm install
-# 2. Run
 npm run dev
 ```
 
 ---
 
-## 7. Known Issues & "Ghost in the Shell"
+## 8. Future Roadmap
 
-1.  **Screen Permissions (macOS)**: You MUST grant "Screen Recording" permission to the terminal. If the sensor sees black, this is why.
-2.  **Socket Latency**: The initial handshake can take 1-2 seconds. The frontend shows "Connecting...".
-3.  **Graph Complexity**: `MemoryGalaxy` renders all nodes. With >1000 nodes, it may lag. (Mitigation: The "Dream" protocol keeps active node count low).
-4.  **LLM Hallucination**: Gemini sometimes returns invalid JSON. The system has `try-except` blocks to handle this gracefully.
-
----
-
-## 8. Development Log (Chronological)
-
-1.  **Phase 1**: Core Architecture (FastAPI + Socket.IO).
-2.  **Phase 2**: Perception (ScreenSensor + Gemini Vision).
-3.  **Phase 3**: The Council (LangGraph Multi-Agent System).
-4.  **Phase 4**: Memory (ChromaDB + GraphService).
-5.  **Phase 5**: Frontend (Next.js + Three.js BioField).
-6.  **Phase 6**: Liaison Agent (ReAct + ProfileService).
-7.  **Phase 7 (Final)**:
-    *   **Dreams**: `consolidate_memories` + Cold Storage.
-    *   **Interactivity**: `RiskCard` + `adjust_tolerance`.
-    *   **Dynamic Modeling**: `RiskEngine` uses `UserProfile` conditions.
-    *   **Fixes**: Schema validation, Build errors.
+1.  **Wearable Integration**: Connect `RiskEngine` to real-time heart rate/HRV data.
+2.  **Voice Interface**: Add STT/TTS to the Liaison Agent.
+3.  **Visual Perception**: Allow the agent to "see" the user via webcam for posture correction.
 
 ---
-
-> **Final Status**: The system is fully operational. It perceives, thinks, remembers, dreams, and negotiates.
-> **Signed**: Antigravity (Phase 7 Architect)
-
-*End of Codex.*
+*Created by Antigravity (Google Deepmind) & The User.*
