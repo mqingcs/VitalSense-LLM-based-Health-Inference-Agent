@@ -120,6 +120,33 @@ class GeminiProvider:
         except Exception as e:
             print(f"❌ Gemini Chat Error: {e}")
             return "I'm having trouble connecting to my thought process right now."
-
+    async def summarize_day(self, context: str) -> str:
+        """
+        Summarizes a list of raw memory logs into a cohesive narrative.
+        """
+        prompt = f"""
+        You are the 'Hippocampus' of an AI agent.
+        Your task is to consolidate the following raw memory logs into a single, cohesive narrative summary.
+        
+        Rules:
+        1. Ignore repetitive noise (e.g., 50 logs of "typing").
+        2. Focus on the 'Story': What did the user work on? How did they feel? What were the outcomes?
+        3. Be concise but comprehensive.
+        
+        Raw Logs:
+        {context}
+        
+        Summary:
+        """
+        
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
+            return response.text if response.text else "No significant events."
+        except Exception as e:
+            print(f"❌ Gemini Summary Error: {e}")
+            return "Failed to generate summary."
 # Global Instance
 llm_provider = GeminiProvider()

@@ -44,6 +44,10 @@ class VitalPulse:
         """Starts the pulse loop."""
         self.running = True
         logger.info("[VitalPulse] System Heartbeat Started.")
+        
+        # Wake-Up Consolidation Check
+        await self._check_startup_gap()
+        
         while self.running:
             try:
                 await self._beat()
@@ -51,6 +55,35 @@ class VitalPulse:
                 logger.error(f"[VitalPulse] Arrhythmia detected: {e}")
             
             await asyncio.sleep(self.check_interval)
+
+    async def _check_startup_gap(self):
+        """
+        Checks if the system was off for a long time (Sleep Mode).
+        If > 4 hours, triggers Memory Consolidation.
+        """
+        from backend.core.memory import hippocampus
+        import datetime
+        
+        try:
+            # Get last memory timestamp
+            memories = await hippocampus.get_all_memories()
+            if not memories:
+                return
+
+            # Sort by time descending
+            memories.sort(key=lambda x: x.timestamp, reverse=True)
+            last_mem_time = datetime.datetime.fromisoformat(memories[0].timestamp).timestamp()
+            now = time.time()
+            
+            hours_gap = (now - last_mem_time) / 3600
+            print(f"[VitalPulse] Startup Gap: {hours_gap:.2f} hours")
+            
+            if hours_gap > 4:
+                print("[VitalPulse] Long gap detected. Triggering Wake-Up Consolidation...")
+                await hippocampus.consolidate_memories()
+                
+        except Exception as e:
+            print(f"[VitalPulse] Error checking startup gap: {e}")
 
     def stop(self):
         self.running = False

@@ -73,6 +73,17 @@ async def lifespan(app: FastAPI):
             await notifier.execute(final_plan)
             await sio.emit('intervention', final_data)
             
+        # 4. Persist to Memory (Critical Fix)
+        # We must save this event so it appears in the Memory Manager and Graph
+        council_log = f"""
+        Timestamp: {datetime.now().isoformat()}
+        Input Source: {event.payload['type']}
+        Input Text: {event.payload['text']}
+        Council Decision: {final_plan.risk_level} Risk.
+        Actions: {final_plan.actions}
+        """
+        await hippocampus.add_memory(council_log)
+            
     # 5. Chat Handler
     @sio.on('chat_message')
     async def handle_chat(sid, data):

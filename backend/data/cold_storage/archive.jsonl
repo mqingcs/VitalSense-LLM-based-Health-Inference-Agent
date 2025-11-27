@@ -1,0 +1,5 @@
+{"timestamp":"2023-10-27T10:00:00","scene":"Work","statement":"Coding python","entities":[],"user_state":"Focused","outcome":"Progress","remarks":"","id":"1"}
+{"timestamp":"2023-10-27T10:05:00","scene":"Work","statement":"Typing code","entities":[],"user_state":"Focused","outcome":"Progress","remarks":"","id":"2"}
+{"timestamp":"2023-10-27T10:10:00","scene":"Work","statement":"Debugging","entities":[],"user_state":"Focused","outcome":"Fix","remarks":"","id":"3"}
+{"timestamp":"2023-10-27T10:15:00","scene":"Work","statement":"Running tests","entities":[],"user_state":"Focused","outcome":"Pass","remarks":"","id":"4"}
+{"timestamp":"2023-10-27T10:20:00","scene":"Work","statement":"Commit changes","entities":[],"user_state":"Focused","outcome":"Done","remarks":"","id":"5"}

@@ -15,37 +15,49 @@ from backend.agents.personas import LIAISON_PROMPT
 @tool
 def update_profile(key: str, value: str, action: str = "add"):
     """
-    Updates the user's profile.
+    Updates the user's persistent profile.
     Args:
-        key: 'trait', 'condition', or 'habit'.
-        value: The value to add/remove (e.g., 'Back Pain').
+        key: 'trait', 'habit', 'preference', or 'condition'.
+        value: The value to add/remove (e.g., 'Night Owl', 'Back Pain').
         action: 'add' or 'remove'.
     """
     if key == "trait":
         profile_service.update_trait(value, action)
+    elif key == "habit":
+        # Simplified for prototype
+        if action == "add": profile_service.profile.habits.append(value)
+        elif action == "remove" and value in profile_service.profile.habits: profile_service.profile.habits.remove(value)
+        profile_service._save_profile()
     elif key == "condition":
         profile_service.update_condition(value, action)
-    elif key == "habit":
-        if action == "add" and value not in profile_service.profile.habits:
-            profile_service.profile.habits.append(value)
-        elif action == "remove" and value in profile_service.profile.habits:
-            profile_service.profile.habits.remove(value)
-        profile_service._save_profile()
+    elif key == "preference":
+        profile_service.set_preference(value, True if action == "add" else False) # Simplified
         
-    return f"Profile updated: {action} {key} '{value}'."
+    return f"Profile Updated: {action.upper()} {key} -> {value}"
 
 @tool
-def manage_memory(action: str, query: str):
+async def manage_memory(action: str, query: str):
     """
     Manages user memories.
     Args:
         action: 'delete' or 'search'.
         query: The content to search for or delete.
     """
-    # This is a simplified version. Real deletion needs ID.
-    # We'll search first then delete if action is delete.
-    # For now, just searching.
-    return "Memory management is complex. Please use the Memory Manager UI for precise deletion."
+    if action == "search":
+        memories = await hippocampus.recall(query)
+        if not memories:
+            return "Memory Search: No relevant memories found."
+        
+        summary = "Memory Search Results:\n"
+        for m in memories:
+            summary += f"- [{m.timestamp}] {m.statement}\n"
+        return summary
+        
+    return "Memory management: Deletion requires specific ID. Please use the Memory Manager UI."
+
+# ... (other tools remain sync) ...
+
+
 
 @tool
 def set_preference(key: str, value: str):
@@ -60,17 +72,43 @@ def set_preference(key: str, value: str):
     return f"Preference set: {key} = {val}"
 
 @tool
-def query_graph(question: str):
+async def query_graph(question: str):
     """
     Queries the knowledge graph for insights.
     Args:
         question: The user's question about their behavior.
     """
-    # Simple heuristic for now
-    if "work" in question.lower():
-        grind = graph_service.detect_grind_pattern()
-        return f"Graph Analysis: Grind detected? {grind['detected']}. Duration: {grind['duration']}m."
-    return "Graph query not fully implemented yet."
+    # "Smart Query" Strategy:
+    # Instead of guessing intent with keywords, we provide a rich context 
+    # combining recent timeline (structure) and semantic search (content).
+    
+    # 1. Get Timeline Context (Structure & Duration)
+    activities = graph_service.get_recent_activity(limit=15)
+    timeline_str = "Recent Timeline:\n"
+    if activities:
+        for act in activities:
+            timeline_str += f"- [{act['timestamp']}] {act['statement']} (Duration: {act['duration']})\n"
+    else:
+        timeline_str += "No recent activity recorded.\n"
+
+    # 2. Semantic Search (Content)
+    # We search for the specific question to find relevant past episodes
+    memories = await hippocampus.recall(question, k=5)
+    memory_str = "Relevant Memories:\n"
+    if memories:
+        for m in memories:
+            memory_str += f"- [{m.timestamp}] {m.statement}\n"
+    else:
+        memory_str += "No specific memories found for this query.\n"
+        
+    # 3. Grind Detection (Specific Pattern)
+    # We always run this as a background check for context
+    grind = graph_service.detect_grind_pattern()
+    grind_str = f"Grind Pattern Detected: {grind['detected']} (Duration: {grind['duration']}m)\n"
+    
+    return f"Graph Analysis Results:\n\n{timeline_str}\n{memory_str}\n{grind_str}"
+
+
 
 @tool
 def set_risk_override(risk_type: str, duration_hours: int, reason: str):
@@ -120,8 +158,7 @@ class LiaisonState(Dict):
 async def liaison_node(state: LiaisonState):
     print("--- [Liaison] Thinking ---")
     
-    # 1. Get Profile Summary (Lightweight)
-    # We no longer dump the whole thing. We give a high-level summary.
+    # 1. Get Profile Summary
     profile_summary = f"User: {profile_service.profile.name}. Role: {profile_service.profile.role}."
     
     # 2. Construct Prompt
@@ -129,7 +166,8 @@ async def liaison_node(state: LiaisonState):
     CRITICAL INSTRUCTION: You are an AUTONOMOUS AGENT.
     1. **On-Demand Memory**: You do NOT have the full user profile loaded. If you need to know about allergies, habits, or preferences to answer a question, use `fetch_profile_context`.
     2. **Proactivity**: If you see a risk, act on it.
-    3. **Task Chaining**: Combine tools to solve problems.
+    3. **Dynamic Modeling**: If the user mentions a physical ailment (e.g., "My back hurts"), you MUST use `update_profile(key='condition', value='Back Pain', action='add')` immediately. This adjusts the risk engine.
+    4. **Task Chaining**: Combine tools to solve problems.
     """
     
     system_msg = SystemMessage(content=LIAISON_PROMPT.format(user_profile=profile_summary) + "\n\n" + autonomy_instruction)
@@ -138,6 +176,7 @@ async def liaison_node(state: LiaisonState):
     # 3. ReAct Loop
     max_turns = 5
     current_messages = messages.copy()
+    new_messages = [] # Track messages generated in this node
     
     for _ in range(max_turns):
         # Call LLM
@@ -162,11 +201,11 @@ async def liaison_node(state: LiaisonState):
                 if tool_name == "update_profile":
                     tool_result = update_profile.invoke(tool_args)
                 elif tool_name == "manage_memory":
-                    tool_result = manage_memory.invoke(tool_args)
+                    tool_result = await manage_memory.ainvoke(tool_args)
                 elif tool_name == "set_preference":
                     tool_result = set_preference.invoke(tool_args)
                 elif tool_name == "query_graph":
-                    tool_result = query_graph.invoke(tool_args)
+                    tool_result = await query_graph.ainvoke(tool_args)
                 elif tool_name == "set_risk_override":
                     tool_result = set_risk_override.invoke(tool_args)
                 elif tool_name == "fetch_profile_context":
@@ -174,19 +213,33 @@ async def liaison_node(state: LiaisonState):
                 
                 print(f"--- [Liaison] Tool Result: {tool_result} ---")
                 
-                # Append to history and loop again
-                current_messages.append(AIMessage(content=response_text))
-                current_messages.append(HumanMessage(content=f"Tool Output: {tool_result}"))
+                # Append to history
+                ai_msg = AIMessage(content=response_text)
+                tool_msg = HumanMessage(content=f"Tool Output: {tool_result}")
+                
+                current_messages.append(ai_msg)
+                current_messages.append(tool_msg)
+                
+                new_messages.append(ai_msg)
+                new_messages.append(tool_msg)
                 
             except Exception as e:
                 print(f"--- [Liaison] Tool Execution Error: {e} ---")
-                current_messages.append(AIMessage(content=response_text))
-                current_messages.append(HumanMessage(content=f"Tool Execution Error: {e}"))
+                ai_msg = AIMessage(content=response_text)
+                err_msg = HumanMessage(content=f"Tool Execution Error: {e}")
+                
+                current_messages.append(ai_msg)
+                current_messages.append(err_msg)
+                
+                new_messages.append(ai_msg)
+                new_messages.append(err_msg)
         else:
             # No tool call, just return the response
-            return {"messages": [AIMessage(content=response_text)]}
+            final_msg = AIMessage(content=response_text)
+            new_messages.append(final_msg)
+            return {"messages": new_messages}
             
-    return {"messages": [AIMessage(content="I've done a lot of thinking. Let's pause.")]}
+    return {"messages": new_messages + [AIMessage(content="I've done a lot of thinking. Let's pause.")]}
 
 # --- Workflow ---
 

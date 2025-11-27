@@ -96,6 +96,8 @@ class GraphService:
             if d.get("type") == "memory":
                 try:
                     ts = datetime.fromisoformat(d.get("timestamp"))
+                    if ts.tzinfo is not None:
+                        ts = ts.replace(tzinfo=None)
                     memories.append((n, ts, d))
                 except:
                     pass
@@ -162,6 +164,66 @@ class GraphService:
 
     def detect_mixed_media_pattern(self) -> Dict[str, Any]:
         return {"detected": False, "reason": "", "involved_nodes": []}
+
+    def get_recent_activity(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Retrieves the most recent memory nodes and their linked entities.
+        Calculates duration based on time gaps between memories.
+        """
+        memories = []
+        for n, d in self.graph.nodes(data=True):
+            if d.get("type") == "memory":
+                try:
+                    ts = datetime.fromisoformat(d.get("timestamp"))
+                    # Ensure naive for comparison
+                    if ts.tzinfo is not None:
+                        ts = ts.replace(tzinfo=None)
+                    memories.append((n, ts, d))
+                except:
+                    pass
+        
+        # Sort newest first
+        memories.sort(key=lambda x: x[1], reverse=True)
+        recent = memories[:limit]
+        
+        results = []
+        for i in range(len(recent)):
+            node_id, ts, data = recent[i]
+            
+            # Calculate Duration (Time until NEXT memory)
+            # Since list is newest-first, the "next" event in time is at i-1 (if i>0)
+            # But wait, we want duration OF this event. So we look at the *next* memory in chronological order.
+            # In a newest-first list:
+            # [Now, 10m ago, 30m ago]
+            # Duration of "10m ago" is (Now - 10m ago).
+            # So we look at i-1.
+            
+            duration_str = "Unknown"
+            if i > 0:
+                next_event_ts = recent[i-1][1]
+                diff = (next_event_ts - ts).total_seconds() / 60
+                if diff < 180: # If gap < 3 hours, assume continuous
+                    duration_str = f"{int(diff)} mins"
+                else:
+                    duration_str = "End of session"
+            else:
+                duration_str = "Ongoing"
+
+            # Find linked entities
+            entities = []
+            for neighbor in self.graph.neighbors(node_id):
+                n_data = self.graph.nodes[neighbor]
+                if n_data.get("type") != "memory":
+                    entities.append(f"{n_data.get('label')} ({n_data.get('type')})")
+            
+            results.append({
+                "timestamp": ts.isoformat(),
+                "statement": data.get("statement"),
+                "duration": duration_str,
+                "entities": entities
+            })
+            
+        return results
 
 # Global Instance
 graph_service = GraphService()

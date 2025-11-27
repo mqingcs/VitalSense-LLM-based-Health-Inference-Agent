@@ -71,6 +71,7 @@ Guardian said: {coach_output}
 Output a JSON with:
 - "summary": string (Concise, direct)
 - "risk_level": "LOW" | "MEDIUM" | "HIGH"
+- "risk_type": string (The primary category: "sedentary", "posture", "stress", "fatigue", "eye_strain", "hydration")
 - "actions": list of strings (3-5 concrete, actionable steps)
 """
 

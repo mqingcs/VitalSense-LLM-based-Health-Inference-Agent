@@ -23,6 +23,7 @@ class CouncilActionPlan(BaseModel):
     """
     summary: str = Field(description="Executive summary of the user's health state.")
     risk_level: str = Field(description="Overall risk level: LOW, MEDIUM, or HIGH.")
+    risk_type: str = Field(description="The primary category of the risk (e.g., 'sedentary', 'posture', 'stress', 'fatigue').", default="sedentary")
     actions: List[str] = Field(description="Concrete, actionable steps for the user to take.")
     graph_highlights: List[str] = Field(description="List of Memory IDs that contributed to the risk assessment.", default=[])
 
@@ -36,6 +37,6 @@ class MemoryEntry(BaseModel):
     entities: List[str] = Field(description="Key entities extracted (e.g., ['Insomnia', 'Heart Rate']).")
     user_state: str = Field(description="Inferred emotional or physical state (e.g., 'Anxious').")
     outcome: str = Field(description="The action taken or advice given.")
-    remarks: Optional[str] = Field(description="Meta-analysis or additional notes.")
+    remarks: Optional[str] = Field(description="Meta-analysis or additional notes.", default=None)
     id: Optional[str] = Field(description="Unique ID of the memory record.", default=None)
 

@@ -2,16 +2,79 @@
 
 import { useState, useEffect, useRef } from "react";
 import { socket } from "@/lib/socket";
-import { Send, User, Bot, X, Minimize2, Maximize2 } from "lucide-react";
+import { Send, User, Bot, X, Minimize2, Maximize2, AlertTriangle, CheckCircle, ThumbsUp, ThumbsDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import GlassPanel from "./ui/GlassPanel";
+
+type RiskCardData = {
+    title: string;
+    summary: string;
+    risk_level: string;
+    actions: string[];
+    risk_type: string; // e.g. "sedentary"
+};
 
 type Message = {
     id: string;
     role: "user" | "assistant" | "system";
     content: string;
     timestamp: number;
+    cardData?: RiskCardData;
 };
+
+// Risk Card Component
+const RiskCard = ({ data, onDismiss, onAcknowledge }: { data: RiskCardData, onDismiss: () => void, onAcknowledge: () => void }) => (
+    <div className="relative overflow-hidden bg-gradient-to-br from-amber-950/80 to-black/80 border border-amber-500/30 rounded-xl p-5 space-y-4 w-full shadow-xl backdrop-blur-md group transition-all hover:border-amber-500/50">
+        {/* Ambient Glow */}
+        <div className="absolute -top-10 -right-10 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl pointer-events-none group-hover:bg-amber-500/20 transition-all" />
+
+        <div className="flex items-start gap-4 relative z-10">
+            <div className="p-2 bg-amber-500/10 rounded-lg border border-amber-500/20 shrink-0 animate-pulse">
+                <AlertTriangle className="text-amber-500" size={24} />
+            </div>
+            <div>
+                <h4 className="font-bold text-amber-100 text-lg tracking-tight">{data.title}</h4>
+                <div className="flex items-center gap-2 mt-1">
+                    <span className="px-2 py-0.5 bg-amber-500/20 border border-amber-500/30 rounded text-[10px] font-bold text-amber-300 uppercase tracking-wider">
+                        {data.risk_level} Risk
+                    </span>
+                    <span className="text-xs text-zinc-500">Just now</span>
+                </div>
+            </div>
+        </div>
+
+        <p className="text-sm text-zinc-300 leading-relaxed relative z-10">
+            {data.summary}
+        </p>
+
+        <div className="space-y-2 bg-black/20 rounded-lg p-3 border border-white/5 relative z-10">
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Suggested Actions</p>
+            {data.actions.map((action, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-zinc-300">
+                    <div className="w-1.5 h-1.5 bg-amber-500 rounded-full mt-1 shrink-0" />
+                    {action}
+                </div>
+            ))}
+        </div>
+
+        <div className="flex gap-3 pt-2 relative z-10">
+            <button
+                onClick={onAcknowledge}
+                className="flex-1 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-400 text-xs font-medium py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 group/btn"
+            >
+                <CheckCircle size={14} className="group-hover/btn:scale-110 transition-transform" />
+                I'll fix it
+            </button>
+            <button
+                onClick={onDismiss}
+                className="flex-1 bg-zinc-800/40 hover:bg-zinc-800/60 border border-white/10 hover:border-white/20 text-zinc-400 hover:text-zinc-300 text-xs font-medium py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 group/btn"
+            >
+                <ThumbsDown size={14} className="group-hover/btn:scale-110 transition-transform" />
+                Not now
+            </button>
+        </div>
+    </div>
+);
 
 export default function ChatInterface() {
     const [isOpen, setIsOpen] = useState(true);
@@ -23,6 +86,19 @@ export default function ChatInterface() {
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const dragStartRef = useRef({ x: 0, y: 0 });
+
+    const addMessage = (role: Message["role"], content: string, cardData?: RiskCardData) => {
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: Math.random().toString(36).substring(7),
+                role,
+                content,
+                timestamp: Date.now(),
+                cardData
+            },
+        ]);
+    };
 
     useEffect(() => {
         // Initial Greeting
@@ -43,19 +119,32 @@ export default function ChatInterface() {
         // Listen for System Alerts to inject into chat
         socket.on("analysis_result", (data: any) => {
             if (data.risk_level === "HIGH" || data.risk_level === "MEDIUM") {
-                const alertMsg = `⚠️ **${data.risk_level} RISK DETECTED**\n\n${data.summary}\n\nSuggested Actions:\n${data.actions.map((a: string) => `- ${a}`).join("\n")}`;
-                addMessage("system", alertMsg);
+                // Use RiskCard instead of text
+                addMessage("system", "", {
+                    title: "Health Alert",
+                    summary: data.summary,
+                    risk_level: data.risk_level,
+                    actions: data.actions,
+                    risk_type: "sedentary" // Defaulting to sedentary for now as it's the main risk
+                });
             }
         });
 
-        // Set initial position (bottom right)
-        // We defer this to client-side to avoid hydration mismatch if possible, 
-        // or just use fixed positioning with transform.
-        // For simplicity, we'll start with a transform of (0,0) which corresponds to the CSS-defined bottom-right.
+        // Listen for Risk Cards (Legacy/Direct support)
+        socket.on("risk_card", (data: any) => {
+            addMessage("system", "", {
+                title: data.title || "Health Alert",
+                summary: data.summary,
+                risk_level: data.risk_level,
+                actions: data.actions,
+                risk_type: data.risk_type || "sedentary"
+            });
+        });
 
         return () => {
             socket.off("chat_reply");
             socket.off("analysis_result");
+            socket.off("risk_card");
         };
     }, []);
 
@@ -96,18 +185,6 @@ export default function ChatInterface() {
         }
     }, [messages, isTyping]);
 
-    const addMessage = (role: Message["role"], content: string) => {
-        setMessages((prev) => [
-            ...prev,
-            {
-                id: Math.random().toString(36).substring(7),
-                role,
-                content,
-                timestamp: Date.now(),
-            },
-        ]);
-    };
-
     const handleSend = () => {
         if (!input.trim()) return;
 
@@ -123,6 +200,16 @@ export default function ChatInterface() {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             handleSend();
+        }
+    };
+
+    const handleCardAction = (action: "dismiss" | "acknowledge", riskType: string) => {
+        if (action === "dismiss") {
+            // Feedback Loop: Increase tolerance
+            socket.emit("adjust_tolerance", { risk_type: riskType, amount: 0.1 });
+            addMessage("user", "Not now. I need to focus.");
+        } else {
+            addMessage("user", "On it. Thanks.");
         }
     };
 
@@ -188,7 +275,15 @@ export default function ChatInterface() {
                                                 : "bg-zinc-800/80 text-zinc-200 rounded-tl-none"
                                     )}
                                 >
-                                    {msg.content}
+                                    {msg.role === "system" && msg.cardData ? (
+                                        <RiskCard
+                                            data={msg.cardData}
+                                            onDismiss={() => handleCardAction("dismiss", msg.cardData!.risk_type)}
+                                            onAcknowledge={() => handleCardAction("acknowledge", msg.cardData!.risk_type)}
+                                        />
+                                    ) : (
+                                        msg.content
+                                    )}
                                 </div>
                             </div>
                         ))}

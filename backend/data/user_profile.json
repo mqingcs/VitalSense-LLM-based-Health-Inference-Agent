@@ -1,9 +1,13 @@
 {
   "name": "User",
+  "role": "User",
   "traits": [],
   "conditions": [],
   "habits": [],
   "preferences": {
     "mute_alerts": true
+  },
+  "risk_modifiers": {
+    "sedentary": 0.9
   }
 }

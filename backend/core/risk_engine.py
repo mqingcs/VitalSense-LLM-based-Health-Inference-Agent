@@ -3,6 +3,8 @@ from typing import Dict, Any, List
 from backend.core.graph_service import graph_service
 from backend.agents.schemas import RiskAssessment, MemoryEntry
 
+from backend.core.profile_service import profile_service
+
 class RiskEngine:
     """
     Hybrid Risk Assessment Engine.
@@ -20,6 +22,23 @@ class RiskEngine:
         expiration = time.time() + (duration_minutes * 60)
         self.overrides[risk_type] = expiration
         print(f"[RiskEngine] Override set for '{risk_type}' until {expiration}")
+
+    def adjust_tolerance(self, risk_type: str, amount: float):
+        """
+        Feedback Loop: Adjusts the user's tolerance for a specific risk.
+        Called when user dismisses a card.
+        """
+        # For now, we implement this by updating the Profile's risk modifier
+        # This creates a permanent adaptation
+        current_mod = profile_service.get_risk_modifier(risk_type)
+        # If user dismisses, they want LESS sensitivity, so we DECREASE the modifier
+        # (Wait, logic check: Modifier multiplies duration. Lower modifier = Lower effective duration = Less Risk)
+        # So yes, we decrease the modifier.
+        
+        new_mod = max(0.5, current_mod - amount) # Don't go below 0.5
+        profile_service.profile.risk_modifiers[risk_type] = new_mod
+        profile_service._save_profile()
+        print(f"[RiskEngine] Tolerance Adjusted: {risk_type} modifier -> {new_mod}")
 
     def _is_overridden(self, risk_type: str) -> bool:
         """Checks if a risk type is currently overridden."""
@@ -69,13 +88,20 @@ class RiskEngine:
         # 3. Duration Multipliers (Simple)
         # "duration" override blocks all duration-based risks (e.g. "I'm working late")
         if duration_minutes > 0 and not self._is_overridden("duration"):
-            if duration_minutes > 360: # 6 hours
+            # Apply Dynamic Modifier from Profile
+            modifier = profile_service.get_risk_modifier("sedentary")
+            effective_duration = duration_minutes * modifier
+            
+            if modifier > 1.0:
+                 reasons.append(f"Risk Modifier Active: Sedentary x{modifier}")
+
+            if effective_duration > 360: # 6 hours
                 score += 0.4
                 reasons.append(f"Extreme duration (>6h): {duration_minutes}m (+0.4)")
-            elif duration_minutes > 240: # 4 hours
+            elif effective_duration > 240: # 4 hours
                 score += 0.3
                 reasons.append(f"High duration (>4h): {duration_minutes}m (+0.3)")
-            elif duration_minutes > 120: # 2 hours
+            elif effective_duration > 120: # 2 hours
                 if score > 0: # Only aggravate existing issues
                     score += 0.1
                     reasons.append(f"Moderate duration (>2h): {duration_minutes}m (+0.1)")
@@ -110,16 +136,24 @@ class RiskEngine:
         # 2. Check "The Grind" (Work > 1h without break)
         grind = graph_service.detect_grind_pattern(threshold_minutes=60)
         if grind["detected"]:
-            risks.append(f"GRAPH_ALERT: {grind['reason']}")
-            total_risk_score += 0.4 # Significant risk factor
+            # Apply Modifier
+            modifier = profile_service.get_risk_modifier("sedentary")
+            
+            risks.append(f"GRAPH_ALERT: {grind['reason']} (Modifier: x{modifier})")
+            total_risk_score += (0.4 * modifier) # Significant risk factor scaled
+            
             if "involved_nodes" in grind:
                 all_involved_nodes.update(grind["involved_nodes"])
             
         # 3. Check "Mixed Media" (Work -> Ent)
         mixed = graph_service.detect_mixed_media_pattern()
         if mixed["detected"]:
-            risks.append(f"GRAPH_ALERT: {mixed['reason']}")
-            total_risk_score += 0.2 # Moderate risk
+            # Apply Modifier
+            modifier = profile_service.get_risk_modifier("screen_time")
+            
+            risks.append(f"GRAPH_ALERT: {mixed['reason']} (Modifier: x{modifier})")
+            total_risk_score += (0.2 * modifier) # Moderate risk scaled
+            
             if "involved_nodes" in mixed:
                 all_involved_nodes.update(mixed["involved_nodes"])
             
