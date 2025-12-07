@@ -2,6 +2,8 @@
 
 > **"Highly Autonomous. Highly Intelligent. Highly Perceptive."**
 
+[English](README.md) | [中文文档](README_CN.md)
+
 **VitalSense** is an experimental **Autonomous Multi-Agent Health Operating System (VitalOS)** designed to be your private, sentient digital health twin. Unlike passive trackers, VitalSense actively perceives your digital environment, reasons about your well-being using a Council of Agents, and intervenes proactively to prevent burnout.
 
 ---
