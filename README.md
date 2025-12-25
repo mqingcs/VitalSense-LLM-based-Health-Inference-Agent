@@ -98,4 +98,4 @@ Your health data is debated by a team of AI experts. If the **Doctor** detects e
 ---
 
 ## 📜 License
-MIT License. Created by Antigravity (Google Deepmind) & The User.
+AGPL-3.0 license. Created by Antigravity (Google Deepmind) & The User.
