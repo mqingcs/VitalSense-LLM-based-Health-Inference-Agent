@@ -7,6 +7,9 @@
 **VitalSense** 是一个实验性的 **自主多智能体健康操作系统 (VitalOS)**，旨在成为您私有、有感知的数字健康孪生体。与被动的健康追踪器不同，VitalSense 主动感知您的数字环境，利用智能体议会 (Council of Agents) 推理您的健康状况，并在您精疲力竭之前主动进行干预。
 
 ---
+## 📚 深度文档
+
+想了解架构细节、提示工程、内部机制？阅读 **[项目指南](PROJECT_GUIDE_CN.md)**（或 [Project Guide (English Version)](PROJECT_GUIDE.md)）
 
 ## 🌟 核心理念
 
