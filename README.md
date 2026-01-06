@@ -8,6 +8,10 @@
 
 ---
 
+## 📚 Deep Dive
+
+For a deep dive into the architecture, prompt engineering, and internal mechanics, read the **[Project Guide](PROJECT_GUIDE.md)** (or the [项目指南（中文版）](PROJECT_GUIDE_CN.md)).
+
 ## 🌟 Core Philosophy
 
 VitalSense evolves beyond simple command-response bots into a **Sentient Private Assistant**:
