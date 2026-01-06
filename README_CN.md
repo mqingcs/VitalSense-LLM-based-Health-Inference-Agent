@@ -101,4 +101,4 @@ VitalSense 可以“看”您的屏幕以检测疲劳或压力诱因。在 **本
 ---
 
 ## 📜 许可证
-MIT License. Created by Antigravity (Google Deepmind) & The User.
+AGPL-3.0 license. Created by Antigravity (Google Deepmind) & The User.
